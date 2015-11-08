@@ -7,6 +7,7 @@ import Control.Concurrent (threadDelay)
 import Linear
 import Linear.Affine
 import Foreign.C.Types
+import Control.Monad (when, forever)
 
 main :: IO ()
 main = do
@@ -21,9 +22,10 @@ main = do
     texture <- createTextureFromSurface render surface
     freeSurface surface
 
-    clear render
-    copy render texture Nothing Nothing
-    present render
+    forever $ do
+        clear render
+        copy render texture Nothing Nothing
+        present render
 
     threadDelay 3000000
     destroyRenderer render
