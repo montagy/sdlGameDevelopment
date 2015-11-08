@@ -33,11 +33,17 @@ main = do
         loop [] = return ()
         loop (frame : frames) = do
             clear render
-            copy render texture
+            copyEx render texture
                 -- source rect
                 (Just frame)
                 --destination rect
                 (Just (Rectangle (P (V2 0 0)) spriteSize))
+                --angle in degree
+                0.0
+                -- point of rotation
+                Nothing
+                -- flip direction
+                (V2 True False)
             present render
             threadDelay 300000
             loop frames
