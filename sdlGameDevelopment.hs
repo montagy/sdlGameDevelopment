@@ -16,21 +16,34 @@ main = do
 
     render <- createRenderer window (-1 :: CInt) defaultRenderer
 
-    surface <- loadBMP "assets/foo.bmp"
+    surface <- loadBMP "assets/animation.bmp"
     texture <- createTextureFromSurface render surface
     freeSurface surface
 
-    TextureInfo {..} <- queryTexture texture
+    --TextureInfo {..} <- queryTexture texture
 
+    let
+        spriteSize = V2 64 205
+        clip1 = Rectangle (P (V2 0 0)) spriteSize
+        clip2 = Rectangle (P (V2 64 0)) spriteSize
+        clip3 = Rectangle (P (V2 128 0)) spriteSize
+        clip4 = Rectangle (P (V2 192 0)) spriteSize
     rendererDrawColor render $= V4 0 0 0 255
-    clear render
-    copy render texture
-        -- source rect
-        (Just (Rectangle (P (V2 0 0)) (V2 textureWidth textureHeight)))
-        --destination rect
-        (Just (Rectangle (P (V2 0 0)) (V2 (textureWidth*(3::CInt)) (textureHeight*(3::CInt)))))
-    present render
+    let
+        loop [] = return ()
+        loop (frame : frames) = do
+            clear render
+            copy render texture
+                -- source rect
+                (Just frame)
+                --destination rect
+                (Just (Rectangle (P (V2 0 0)) spriteSize))
+            present render
+            loop frames
 
+    loop $ cycle $  [clip1, clip2, clip3, clip4] >>= replicate 4
     threadDelay 1000000
+    destroyRenderer render
+    destroyWindow window
     quit
 
