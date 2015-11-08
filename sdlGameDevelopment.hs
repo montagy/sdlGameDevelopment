@@ -39,9 +39,10 @@ main = do
                 --destination rect
                 (Just (Rectangle (P (V2 0 0)) spriteSize))
             present render
+            threadDelay 300000
             loop frames
 
-    loop $ cycle $  [clip1, clip2, clip3, clip4] >>= replicate 4
+    loop [clip1, clip2, clip3, clip4]
     threadDelay 1000000
     destroyRenderer render
     destroyWindow window
