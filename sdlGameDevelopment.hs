@@ -7,7 +7,7 @@ import Control.Concurrent (threadDelay)
 import Linear
 import Linear.Affine
 import Foreign.C.Types
-import Control.Monad (when, forever)
+import Control.Monad (when, forever, unless)
 
 spriteSize :: V2 CInt
 spriteSize = V2 64 205
@@ -33,11 +33,19 @@ main = do
     let
         loop [] _ = return ()
         loop (frame:frames) velocity = do
-                clear render
-                copy render texture (Just frame) $
-                    Just (Rectangle (P (V2 (0+velocity) 0)) spriteSize)
-                present render
-                loop frames (velocity+1)
+            let collectEvents = do
+                    e <- pollEvent
+                    case e of
+                      Nothing -> return []
+                      Just e' -> (e' :) <$> collectEvents
+
+            events <- map eventPayload <$> collectEvents
+            let quit = any (== QuitEvent) events
+            clear render
+            copy render texture (Just frame) $
+                Just (Rectangle (P (V2 (0+velocity) 0)) spriteSize)
+            present render
+            unless quit $ loop frames (velocity+1)
 
     loop (cycle ([clip1, clip2, clip3, clip4] >>= replicate 4)) 0
     threadDelay 3000000
