@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 
 import SDL
 import qualified SDL.Image as IM
@@ -8,6 +9,9 @@ import Linear
 import Linear.Affine
 import Foreign.C.Types
 import Control.Monad (when, forever, unless)
+import Data.Monoid
+import Data.Foldable
+import Data.Maybe
 
 spriteSize :: V2 CInt
 spriteSize = V2 64 205
@@ -31,8 +35,7 @@ main = do
     {-freeSurface surface-}
 
     let
-        loop [] _ = return ()
-        loop (frame:frames) velocity = do
+        loop dest = do
             let collectEvents = do
                     e <- pollEvent
                     case e of
@@ -41,13 +44,21 @@ main = do
 
             events <- map eventPayload <$> collectEvents
             let quit = any (== QuitEvent) events
-            clear render
-            copy render texture (Just frame) $
-                Just (Rectangle (P (V2 (0+velocity) 0)) spriteSize)
-            present render
-            unless quit $ loop frames (velocity+1)
+                destPoint = fromMaybe dest $ getLast $
+                    foldMap (\case
+                                    MouseButtonEvent e -> if mouseButtonEventButton e == ButtonLeft
+                                                            then Last (Just $ mouseButtonEventPos e)
+                                                            else mempty
+                                    _ -> mempty
+                            ) events
 
-    loop (cycle ([clip1, clip2, clip3, clip4] >>= replicate 4)) 0
+            clear render
+            copy render texture (Just clip1) $
+                Just (Rectangle (fromIntegral <$> destPoint) spriteSize)
+            present render
+            unless quit $ loop destPoint
+
+    loop $ P (V2 0 0)
     threadDelay 3000000
     destroyRenderer render
     destroyWindow window
