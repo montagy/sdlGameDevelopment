@@ -28,7 +28,7 @@ main = do
         -- source rect
         (Just (Rectangle (P (V2 0 0)) (V2 textureWidth textureHeight)))
         --destination rect
-        (Just (Rectangle (P (V2 0 0)) (V2 textureWidth textureHeight)))
+        (Just (Rectangle (P (V2 0 0)) (V2 (textureWidth*(3::CInt)) (textureHeight*(3::CInt)))))
     present render
 
     threadDelay 1000000
