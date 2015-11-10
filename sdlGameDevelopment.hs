@@ -12,6 +12,8 @@ import Control.Monad (when, forever, unless)
 import Data.Monoid
 import Data.Foldable
 import Data.Maybe
+import qualified Reactive.Banana as B
+import qualified Reactive.Banana.Frameworks as B
 
 spriteSize :: V2 CInt
 spriteSize = V2 64 205
@@ -29,38 +31,41 @@ main = do
         }
 
     render <- createRenderer window (-1 :: CInt) defaultRenderer
-
     texture <- IM.loadTexture render "assets/animation.bmp"
-    {-texture <- createTextureFromSurface render surface-}
-    {-freeSurface surface-}
 
-    let
-        loop dest = do
-            let collectEvents = do
-                    e <- pollEvent
-                    case e of
-                      Nothing -> return []
-                      Just e' -> (e' :) <$> collectEvents
+    (onMouseClick, fireMouseClick) <- B.newAddHandler
+    network <- B.compile $ makeNetwork onMouseClick render texture
+    B.actuate network
+    eventLoop fireMouseClick
 
-            events <- map eventPayload <$> collectEvents
-            let quit = any (== QuitEvent) events
-                destPoint = fromMaybe dest $ getLast $
-                    foldMap (\case
-                                    MouseButtonEvent e -> if mouseButtonEventButton e == ButtonLeft
-                                                            then Last (Just $ mouseButtonEventPos e)
-                                                            else mempty
-                                    _ -> mempty
-                            ) events
-
-            clear render
-            copy render texture (Just clip1) $
-                Just (Rectangle (fromIntegral <$> destPoint) spriteSize)
-            present render
-            unless quit $ loop destPoint
-
-    loop $ P (V2 0 0)
-    threadDelay 3000000
     destroyRenderer render
     destroyWindow window
     quit
+
+drawPic :: Renderer -> Texture -> MouseButtonEventData -> IO ()
+drawPic render texture mData = do
+    clear render
+    copy render texture (Just clip1) $
+        Just (Rectangle (fromIntegral <$> mouseButtonEventPos mData) spriteSize)
+    present render
+
+makeNetwork :: B.AddHandler MouseButtonEventData -> Renderer -> Texture ->  B.MomentIO ()
+makeNetwork mClick render texture = do
+    eM <- B.fromAddHandler mClick
+    B.reactimate $ drawPic render texture <$> eM
+
+eventLoop :: B.Handler MouseButtonEventData -> IO ()
+eventLoop fireClick = loop
+    where loop = do
+            e <- pollEvent
+            case eventPayload <$> e of
+                Nothing -> loop
+                Just e' -> case e' of
+                                QuitEvent -> return ()
+                                MouseButtonEvent m  -> if mouseButtonEventMotion m== Pressed
+                                                                then fireClick m >> loop
+                                                                else loop
+                                _ -> loop
+
+
 
