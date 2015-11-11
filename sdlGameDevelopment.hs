@@ -39,43 +39,37 @@ main = do
     network <- B.compile $ makeNetwork source render texture
     B.actuate network
 
-    drawPic render texture (Just primer)
+    drawPic render texture primer
     eventLoop source
 
     destroyRenderer render
     destroyWindow window
     quit
 
-drawPic :: Renderer -> Texture -> Maybe (Point V2 CInt) -> IO ()
-drawPic render texture mData = do
+drawPic :: Renderer -> Texture -> Point V2 CInt -> IO ()
+drawPic render texture p = do
     clear render
-    copy render texture (Just clip1) (Just $ Rectangle (fromMaybe primer mData) spriteSize)
+    copy render texture (Just clip1) (Just $ Rectangle p spriteSize)
     present render
 
-makeNetwork :: EventSource Event -> Renderer -> Texture ->  B.MomentIO ()
+makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Texture ->  B.MomentIO ()
 makeNetwork source render texture = do
     eM <- B.fromAddHandler $ addHandler source
-    let eMouseClick = B.filterE getMouseClick eM
-        destPos = pure primer :: B.Behavior (Point V2 CInt)
-    B.reactimate $ drawPic render texture <$> getMouseClickPos <$> eMouseClick
+    bdestPos <- B.accumB primer (const <$> eM)
+    edestPos <- B.changes bdestPos
 
-getMouseClickPos :: Event -> Maybe (Point V2 CInt)
-getMouseClickPos e = case eventPayload e of
-                       MouseButtonEvent m -> Just $ fromIntegral <$> mouseButtonEventPos m
-                       _                  -> Nothing
-getMouseClick :: Event -> Bool
-getMouseClick e =
-    case eventPayload e of
-        MouseButtonEvent m -> mouseButtonEventMotion m == Pressed
-        _                  -> False
+    B.reactimate' $ fmap (drawPic render texture) <$> edestPos
 
-eventLoop :: EventSource Event -> IO ()
+
+eventLoop :: EventSource (Point V2 CInt) -> IO ()
 eventLoop source = loop
     where loop = do
-            e <- collectEvent
+            e <- waitEvent
             case eventPayload e of
               QuitEvent -> return ()
-              _         -> fire source e >> loop
+              MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
+                        | pressed == Pressed -> fire source (fromIntegral <$> pos) >> loop
+              _ -> loop
 
 {-----------------------------
  尝试结合sdl和banana
