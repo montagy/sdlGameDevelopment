@@ -75,7 +75,7 @@ eventLoop source = loop
             case pos of
               Nothing -> return ()
               Just p -> fire source $ fromIntegral <$> p
-            threadDelay 10000
+            delay 10
             unless quit loop
 
 {-----------------------------
