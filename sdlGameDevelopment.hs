@@ -49,30 +49,25 @@ main = do
 drawPic :: Renderer -> Texture -> Maybe (Point V2 CInt) -> IO ()
 drawPic render texture mData = do
     clear render
-    copy render texture (Just clip1) (Just $ Rectangle destPoint spriteSize)
+    copy render texture (Just clip1) (Just $ Rectangle (fromMaybe primer mData) spriteSize)
     present render
-        where
-            destPoint = case mData of
-                          Nothing -> primer
-                          Just p -> p
 
 makeNetwork :: EventSource Event -> Renderer -> Texture ->  B.MomentIO ()
 makeNetwork source render texture = do
     eM <- B.fromAddHandler $ addHandler source
     let eMouseClick = B.filterE getMouseClick eM
+        destPos = pure primer :: B.Behavior (Point V2 CInt)
     B.reactimate $ drawPic render texture <$> getMouseClickPos <$> eMouseClick
 
 getMouseClickPos :: Event -> Maybe (Point V2 CInt)
 getMouseClickPos e = case eventPayload e of
                        MouseButtonEvent m -> Just $ fromIntegral <$> mouseButtonEventPos m
-                       _ -> Nothing
+                       _                  -> Nothing
 getMouseClick :: Event -> Bool
 getMouseClick e =
     case eventPayload e of
-        MouseButtonEvent m -> if mouseButtonEventMotion m == Pressed
-                                then True
-                                else False
-        _ -> False
+        MouseButtonEvent m -> mouseButtonEventMotion m == Pressed
+        _                  -> False
 
 eventLoop :: EventSource Event -> IO ()
 eventLoop source = loop
@@ -80,7 +75,7 @@ eventLoop source = loop
             e <- collectEvent
             case eventPayload e of
               QuitEvent -> return ()
-              _ -> fire source e >> loop
+              _         -> fire source e >> loop
 
 {-----------------------------
  尝试结合sdl和banana
