@@ -60,26 +60,33 @@ makeNetwork source render texture = do
 
     B.reactimate' $ fmap (drawPic render texture) <$> edestPos
 
-
 eventLoop :: EventSource (Point V2 CInt) -> IO ()
 eventLoop source = loop
     where loop = do
-            e <- waitEvent
-            case eventPayload e of
-              QuitEvent -> return ()
-              MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
-                        | pressed == Pressed -> fire source (fromIntegral <$> pos) >> loop
-              _ -> loop
+            events <- collectEvents
+            let
+                es = eventPayload <$> events
+                quit = any (== QuitEvent) es
+                pos = getLast $ foldMap (\case
+                                                MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
+                                                            | pressed == Pressed -> Last (Just pos)
+                                                _ -> Last Nothing
+                                        ) es
+            case pos of
+              Nothing -> return ()
+              Just p -> fire source $ fromIntegral <$> p
+            threadDelay 10000
+            unless quit loop
 
 {-----------------------------
  尝试结合sdl和banana
 ------------------------------}
-collectEvent :: IO Event
-collectEvent = do
+collectEvents :: IO [Event]
+collectEvents = do
     e <- pollEvent
     case e of
-      Nothing -> collectEvent
-      Just e' -> return e'
+      Nothing -> return []
+      Just e' -> (e' :) <$> collectEvents
 
 type EventSource a = (B.AddHandler a, B.Handler a)
 type SDLEventSource = EventSource Event
