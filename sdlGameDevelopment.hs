@@ -63,20 +63,32 @@ makeNetwork source render texture = do
 eventLoop :: EventSource (Point V2 CInt) -> IO ()
 eventLoop source = loop
     where loop = do
-            events <- collectEvents
-            let
-                es = eventPayload <$> events
-                quit = any (== QuitEvent) es
-                pos = getLast $ foldMap (\case
-                                                MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
-                                                            | pressed == Pressed -> Last (Just pos)
-                                                _ -> Last Nothing
-                                        ) es
-            case pos of
-              Nothing -> return ()
-              Just p -> fire source $ fromIntegral <$> p
+            mevent <- pollEvent
+            quit <- case mevent of
+                        Nothing -> return True
+                        Just e -> case eventPayload e of
+                                    QuitEvent -> return False
+                                    MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
+                                        | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return True
+                                    _ -> return True
             delay 10
-            unless quit loop
+            when quit loop
+
+
+            {-events <- collectEvents-}
+            {-let-}
+                {-es = eventPayload <$> events-}
+                {-quit = any (== QuitEvent) es-}
+                {-pos = getLast $ foldMap (\case-}
+                                                {-MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)-}
+                                                            {-| pressed == Pressed -> Last (Just pos)-}
+                                                {-_ -> Last Nothing-}
+                                        {-) es-}
+            {-case pos of-}
+              {-Nothing -> return ()-}
+              {-Just p -> fire source $ fromIntegral <$> p-}
+            {-delay 10-}
+            {-unless quit loop-}
 
 {-----------------------------
  尝试结合sdl和banana
