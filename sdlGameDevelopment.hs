@@ -33,6 +33,10 @@ clip1 = Rectangle (P (V2 0 0)) spriteSize
 clip2 = Rectangle (P (V2 64 0)) spriteSize
 clip3 = Rectangle (P (V2 128 0)) spriteSize
 clip4 = Rectangle (P (V2 192 0)) spriteSize
+fps :: Word32
+fps = 60
+delayTime :: Word32
+delayTime = 1000 `div` 60
 main :: IO ()
 main = do
     initializeAll
@@ -97,6 +101,7 @@ makeNetwork source render assets = do
 eventLoop :: EventSource (Point V2 CInt) -> IO ()
 eventLoop source = loop
     where loop = do
+            frameStart <- ticks
             mevent <- pollEvent
             quit <- case mevent of
                         Nothing -> return True
@@ -105,7 +110,10 @@ eventLoop source = loop
                                     MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
                                         | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return True
                                     _ -> return True
-            delay 10
+            frameTime <- (subtract frameStart) <$> ticks
+            if frameTime < delayTime
+               then delay (delayTime - frameTime)
+               else return ()
             when quit loop
 
 {-----------------------------
