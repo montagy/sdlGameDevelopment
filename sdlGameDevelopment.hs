@@ -15,7 +15,15 @@ import Data.Maybe
 import qualified Reactive.Banana as B
 import qualified Reactive.Banana.Frameworks as B
 import Data.Word
+import Data.IORef
+import qualified Data.HashMap.Lazy as HM
+import Data.Text (Text)
 
+data State = State {
+      preload :: IO ()
+    , update :: IO ()
+    }
+type Assets = IORef (HM.HashMap Text Texture)
 spriteSize :: V2 CInt
 spriteSize = V2 64 205
 primer :: Point V2 CInt
@@ -33,32 +41,58 @@ main = do
         }
 
     render <- createRenderer window (-1 :: CInt) defaultRenderer
-    texture <- IM.loadTexture render "assets/animation.bmp"
+    texture1 <- IM.loadTexture render "assets/animation.bmp"
+    texture2 <- IM.loadTexture render "assets/hello_world.bmp"
+    assets <- newIORef $ (HM.singleton "animation" texture1 <> HM.singleton "hello" texture2)
+    currentState <- newIORef "Game"
 
-    source <- B.newAddHandler
-    network <- B.compile $ makeNetwork source render texture
-    B.actuate network
-
-    drawPic render texture primer
-    eventLoop source
+    state <- readIORef currentState
+    case state of
+      "Game" -> gameState render assets
+      "Menu" -> menuState render assets
+      _ -> return ()
 
     destroyRenderer render
     destroyWindow window
     quit
 
-drawPic :: Renderer -> Texture -> Point V2 CInt -> IO ()
-drawPic render texture p = do
+gameState :: Renderer -> Assets -> IO ()
+gameState render assets = do
     clear render
-    copy render texture (Just clip1) (Just $ Rectangle p spriteSize)
+    drawOnEveryFps render assets
+    present render
+    source <- B.newAddHandler
+    network <- B.compile $ makeNetwork source render assets
+    B.actuate network
+    eventLoop source
+
+menuState :: Renderer -> Assets -> IO ()
+menuState render assets = do
+    texture <- (HM.! "hello") <$> readIORef assets
+    clear render
+    copy render texture Nothing Nothing
     present render
 
-makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Texture ->  B.MomentIO ()
-makeNetwork source render texture = do
+drawPic :: Renderer -> Assets -> Point V2 CInt -> IO ()
+drawPic render assets p = do
+    clear render
+    drawOnEveryFps render assets
+    texture<- (HM.! "animation") <$> readIORef assets
+    copy render texture Nothing (Just $ Rectangle p spriteSize)
+    present render
+
+drawOnEveryFps :: Renderer -> Assets -> IO ()
+drawOnEveryFps render assets = do
+    texture <- (HM.! "hello") <$> readIORef assets
+    copy render texture Nothing (Just $ Rectangle (P (V2 100 100)) spriteSize)
+
+makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Assets ->  B.MomentIO ()
+makeNetwork source render assets = do
     eM <- B.fromAddHandler $ addHandler source
-    bdestPos <- B.accumB primer (const <$> eM)
+    bdestPos <- B.accumB undefined (const <$> eM) -- undefined is ok, need refactor
     edestPos <- B.changes bdestPos
 
-    B.reactimate' $ fmap (drawPic render texture) <$> edestPos
+    B.reactimate' $ fmap (drawPic render assets) <$> edestPos
 
 eventLoop :: EventSource (Point V2 CInt) -> IO ()
 eventLoop source = loop
@@ -74,22 +108,6 @@ eventLoop source = loop
             delay 10
             when quit loop
 
-
-            {-events <- collectEvents-}
-            {-let-}
-                {-es = eventPayload <$> events-}
-                {-quit = any (== QuitEvent) es-}
-                {-pos = getLast $ foldMap (\case-}
-                                                {-MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)-}
-                                                            {-| pressed == Pressed -> Last (Just pos)-}
-                                                {-_ -> Last Nothing-}
-                                        {-) es-}
-            {-case pos of-}
-              {-Nothing -> return ()-}
-              {-Just p -> fire source $ fromIntegral <$> p-}
-            {-delay 10-}
-            {-unless quit loop-}
-
 {-----------------------------
  尝试结合sdl和banana
 ------------------------------}
@@ -101,8 +119,6 @@ collectEvents = do
       Just e' -> (e' :) <$> collectEvents
 
 type EventSource a = (B.AddHandler a, B.Handler a)
-type SDLEventSource = EventSource Event
-type SDLEvent = B.Event Event
 
 addHandler :: EventSource a -> B.AddHandler a
 addHandler = fst
