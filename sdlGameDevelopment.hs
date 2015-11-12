@@ -63,6 +63,7 @@ main = do
 
 gameState :: Renderer -> Assets -> EventSource (Point V2 CInt) -> IO Bool
 gameState render assets source = do
+    texture<- B.liftIO $ (HM.! "hello") <$> readIORef assets
     mevent <- pollEvent
     esc <- case mevent of
                 Nothing -> return False
@@ -71,7 +72,7 @@ gameState render assets source = do
                             MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
                                 | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return False
                             _ -> return False
-    drawOnEveryFps render assets
+    drawOnEveryFps render texture
     present render
     return esc
 
@@ -101,9 +102,8 @@ drawPic render texture p = do
     clear render
     copy render texture Nothing (Just $ Rectangle p spriteSize)
 
-drawOnEveryFps :: Renderer -> Assets -> IO ()
-drawOnEveryFps render assets = do
-    texture <- (HM.! "hello") <$> readIORef assets
+drawOnEveryFps :: Renderer -> Texture -> IO ()
+drawOnEveryFps render texture= do
     copy render texture Nothing (Just $ Rectangle (P (V2 100 100)) spriteSize)
 
 {-----------------------------
