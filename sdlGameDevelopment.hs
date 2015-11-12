@@ -17,12 +17,8 @@ import qualified Reactive.Banana.Frameworks as B
 import Data.Word
 import Data.IORef
 import qualified Data.HashMap.Lazy as HM
-import Data.Text (Text)
+import Data.Text (Text, pack)
 
-data State = State {
-      preload :: IO ()
-    , update :: IO ()
-    }
 type Assets = IORef (HM.HashMap Text Texture)
 spriteSize :: V2 CInt
 spriteSize = V2 64 205
@@ -37,6 +33,10 @@ fps :: Word32
 fps = 60
 delayTime :: Word32
 delayTime = 1000 `div` 60
+
+data State = State {
+        runState :: Renderer -> Assets -> IO Bool
+    }
 main :: IO ()
 main = do
     initializeAll
@@ -47,43 +47,37 @@ main = do
     render <- createRenderer window (-1 :: CInt) defaultRenderer
     texture1 <- IM.loadTexture render "assets/animation.bmp"
     texture2 <- IM.loadTexture render "assets/hello_world.bmp"
-    assets <- newIORef $ (HM.singleton "animation" texture1 <> HM.singleton "hello" texture2)
-    currentState <- newIORef "Game"
+    assets <- newIORef $ HM.singleton (pack "hello") texture2
 
-    state <- readIORef currentState
-    case state of
-      "Game" -> gameState render assets
-      "Menu" -> menuState render assets
-      _ -> return ()
+    currentState <- newIORef $ State gameState
+    eventLoop render assets currentState
 
     destroyRenderer render
     destroyWindow window
     quit
 
-gameState :: Renderer -> Assets -> IO ()
+gameState :: Renderer -> Assets -> IO Bool
 gameState render assets = do
-    clear render
-    drawOnEveryFps render assets
-    present render
     source <- B.newAddHandler
     network <- B.compile $ makeNetwork source render assets
     B.actuate network
-    eventLoop source
-
-menuState :: Renderer -> Assets -> IO ()
-menuState render assets = do
-    texture <- (HM.! "hello") <$> readIORef assets
-    clear render
-    copy render texture Nothing Nothing
+    mevent <- pollEvent
+    quit <- case mevent of
+                Nothing -> return True
+                Just e -> case eventPayload e of
+                            QuitEvent -> return False
+                            MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
+                                | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return True
+                            _ -> return True
+    drawOnEveryFps render assets
     present render
+    return quit
 
 drawPic :: Renderer -> Assets -> Point V2 CInt -> IO ()
 drawPic render assets p = do
     clear render
-    drawOnEveryFps render assets
-    texture<- (HM.! "animation") <$> readIORef assets
+    texture<- (HM.! "hello") <$> readIORef assets
     copy render texture Nothing (Just $ Rectangle p spriteSize)
-    present render
 
 drawOnEveryFps :: Renderer -> Assets -> IO ()
 drawOnEveryFps render assets = do
@@ -98,18 +92,12 @@ makeNetwork source render assets = do
 
     B.reactimate' $ fmap (drawPic render assets) <$> edestPos
 
-eventLoop :: EventSource (Point V2 CInt) -> IO ()
-eventLoop source = loop
+eventLoop :: Renderer -> Assets -> IORef State -> IO ()
+eventLoop render assets stateRef = loop
     where loop = do
             frameStart <- ticks
-            mevent <- pollEvent
-            quit <- case mevent of
-                        Nothing -> return True
-                        Just e -> case eventPayload e of
-                                    QuitEvent -> return False
-                                    MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
-                                        | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return True
-                                    _ -> return True
+            state <- readIORef stateRef
+            quit <- runState state render assets
             frameTime <- (subtract frameStart) <$> ticks
             if frameTime < delayTime
                then delay (delayTime - frameTime)
