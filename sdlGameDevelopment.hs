@@ -35,7 +35,7 @@ delayTime :: Word32
 delayTime = 1000 `div` 60
 
 data State = State {
-        runState :: Renderer -> Assets -> IO Bool
+        runState :: Renderer -> Assets -> EventSource (Point V2 CInt) ->  IO Bool
     }
 main :: IO ()
 main = do
@@ -50,59 +50,61 @@ main = do
     assets <- newIORef $ HM.singleton (pack "hello") texture2
 
     currentState <- newIORef $ State gameState
-    eventLoop render assets currentState
+
+    source <- B.newAddHandler
+    network <- B.compile $ makeNetwork source render assets
+    B.actuate network
+
+    eventLoop render assets currentState source
 
     destroyRenderer render
     destroyWindow window
     quit
 
-gameState :: Renderer -> Assets -> IO Bool
-gameState render assets = do
-    source <- B.newAddHandler
-    network <- B.compile $ makeNetwork source render assets
-    B.actuate network
+gameState :: Renderer -> Assets -> EventSource (Point V2 CInt) -> IO Bool
+gameState render assets source = do
     mevent <- pollEvent
-    quit <- case mevent of
-                Nothing -> return True
+    esc <- case mevent of
+                Nothing -> return False
                 Just e -> case eventPayload e of
-                            QuitEvent -> return False
+                            QuitEvent -> return True
                             MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
-                                | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return True
-                            _ -> return True
+                                | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return False
+                            _ -> return False
     drawOnEveryFps render assets
     present render
-    return quit
+    return esc
 
-drawPic :: Renderer -> Assets -> Point V2 CInt -> IO ()
-drawPic render assets p = do
+eventLoop :: Renderer -> Assets -> IORef State -> EventSource (Point V2 CInt)-> IO ()
+eventLoop render assets stateRef source = loop
+    where loop = do
+            frameStart <- ticks
+            state <- readIORef stateRef
+            esc <- runState state render assets source
+            frameTime <- (subtract frameStart) <$> ticks
+            if frameTime < delayTime
+               then delay (delayTime - frameTime)
+               else return ()
+            when (not esc) loop
+
+makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Assets ->  B.MomentIO ()
+makeNetwork source render assets = do
+    eM <- B.fromAddHandler $ addHandler source
+    texture<- B.liftIO $ (HM.! "hello") <$> readIORef assets
+    bdestPos <- B.accumB undefined (const <$> eM) -- undefined is ok, need refactor
+    edestPos <- B.changes bdestPos
+
+    B.reactimate' $ fmap (drawPic render texture) <$> edestPos
+
+drawPic :: Renderer -> Texture -> Point V2 CInt -> IO ()
+drawPic render texture p = do
     clear render
-    texture<- (HM.! "hello") <$> readIORef assets
     copy render texture Nothing (Just $ Rectangle p spriteSize)
 
 drawOnEveryFps :: Renderer -> Assets -> IO ()
 drawOnEveryFps render assets = do
     texture <- (HM.! "hello") <$> readIORef assets
     copy render texture Nothing (Just $ Rectangle (P (V2 100 100)) spriteSize)
-
-makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Assets ->  B.MomentIO ()
-makeNetwork source render assets = do
-    eM <- B.fromAddHandler $ addHandler source
-    bdestPos <- B.accumB undefined (const <$> eM) -- undefined is ok, need refactor
-    edestPos <- B.changes bdestPos
-
-    B.reactimate' $ fmap (drawPic render assets) <$> edestPos
-
-eventLoop :: Renderer -> Assets -> IORef State -> IO ()
-eventLoop render assets stateRef = loop
-    where loop = do
-            frameStart <- ticks
-            state <- readIORef stateRef
-            quit <- runState state render assets
-            frameTime <- (subtract frameStart) <$> ticks
-            if frameTime < delayTime
-               then delay (delayTime - frameTime)
-               else return ()
-            when quit loop
 
 {-----------------------------
  尝试结合sdl和banana
