@@ -96,8 +96,6 @@ gameState render assets source = do
                             MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
                                 | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return False
                             _ -> return False
-    present render
-    return esc
 
 eventLoop :: Renderer -> Assets -> IORef State -> EventSource (Point V2 CInt)-> IO ()
 eventLoop render assets stateRef source = loop
@@ -120,12 +118,6 @@ makeNetwork source render assets = do
     edestPos <- B.changes bdestPos
 
     B.reactimate' $ fmap (drawPic render texture) <$> edestPos
-
-drawPic :: Renderer -> Texture -> Point V2 CInt -> IO ()
-drawPic render texture p = do
-    clear render
-    copy render texture Nothing (Just $ Rectangle p spriteSize)
-    present render
 
 {-----------------------------
  尝试结合sdl和banana
