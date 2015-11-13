@@ -30,9 +30,9 @@ clip2 = Rectangle (P (V2 64 0)) spriteSize
 clip3 = Rectangle (P (V2 128 0)) spriteSize
 clip4 = Rectangle (P (V2 192 0)) spriteSize
 fps :: Word32
-fps = 60
+fps = 200
 delayTime :: Word32
-delayTime = 1000 `div` 60
+delayTime = 1000 `div` fps
 
 data State = State {
         runState :: Renderer -> Assets -> EventSource (Point V2 CInt) ->  IO Bool
@@ -45,17 +45,41 @@ main = do
         }
 
     render <- createRenderer window (-1 :: CInt) defaultRenderer
-    texture1 <- IM.loadTexture render "assets/animation.bmp"
-    texture2 <- IM.loadTexture render "assets/hello_world.bmp"
-    assets <- newIORef $ HM.singleton (pack "hello") texture2
+    texture <- IM.loadTexture render "assets/hello_world.bmp"
+    --assets <- newIORef $ HM.singleton (pack "hello") texture2
 
     currentState <- newIORef $ State gameState
 
-    source <- B.newAddHandler
-    network <- B.compile $ makeNetwork source render assets
+    (clickHandler, fireClick) <- B.newAddHandler
+    network <- B.compile $ do
+        eM <- B.fromAddHandler clickHandler
+        bdestPos <- B.stepper primer eM
+        B.valueB bdestPos>>= B.liftIO . (drawPic render texture)
+        edestPos <- B.changes bdestPos
+
+        B.reactimate' $ fmap (drawPic render texture) <$> edestPos
+
     B.actuate network
 
-    eventLoop render assets currentState source
+    let
+        loop = do
+            frameStart <- ticks
+            mevent <- pollEvent
+            esc <- case mevent of
+                        Nothing -> return False
+                        Just e -> case eventPayload e of
+                                    QuitEvent -> return True
+                                    MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
+                                        | pressed == Pressed -> fireClick (fromIntegral <$> pos) >> return False
+                                    _ -> return False
+
+            frameTime <- (subtract frameStart) <$> ticks
+            if frameTime < delayTime
+               then delay (delayTime - frameTime)
+               else return ()
+            when (not esc) loop
+
+    loop
 
     destroyRenderer render
     destroyWindow window
@@ -72,7 +96,6 @@ gameState render assets source = do
                             MouseButtonEvent (MouseButtonEventData _ pressed _ _ _ pos)
                                 | pressed == Pressed -> fire source (fromIntegral <$> pos) >> return False
                             _ -> return False
-    drawOnEveryFps render texture
     present render
     return esc
 
@@ -92,7 +115,8 @@ makeNetwork :: EventSource (Point V2 CInt)-> Renderer -> Assets ->  B.MomentIO (
 makeNetwork source render assets = do
     eM <- B.fromAddHandler $ addHandler source
     texture<- B.liftIO $ (HM.! "hello") <$> readIORef assets
-    bdestPos <- B.accumB undefined (const <$> eM) -- undefined is ok, need refactor
+    bdestPos <- B.stepper primer eM
+    B.valueB bdestPos>>= B.liftIO . (drawPic render texture)
     edestPos <- B.changes bdestPos
 
     B.reactimate' $ fmap (drawPic render texture) <$> edestPos
@@ -101,10 +125,7 @@ drawPic :: Renderer -> Texture -> Point V2 CInt -> IO ()
 drawPic render texture p = do
     clear render
     copy render texture Nothing (Just $ Rectangle p spriteSize)
-
-drawOnEveryFps :: Renderer -> Texture -> IO ()
-drawOnEveryFps render texture= do
-    copy render texture Nothing (Just $ Rectangle (P (V2 100 100)) spriteSize)
+    present render
 
 {-----------------------------
  尝试结合sdl和banana
