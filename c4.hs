@@ -10,6 +10,7 @@ import Linear
 import Linear.Affine
 import Foreign.C.Types
 import Control.Monad
+import System.Exit (exitSuccess)
 
 primer :: Point V2 CInt
 primer = P (V2 0 0)
@@ -24,18 +25,30 @@ main = do
         (window,render, texture) <- liftIO initSDL
         let
             ePos' = filterE (\m -> SDL.mouseButtonEventMotion m == SDL.Pressed) eMouse
-            ePos = (\m -> SDL.mouseButtonEventPos m ) <$> ePos'
-            eQuit :: Event (IO ())
-            eQuit = (\_ -> do
-                    SDL.destroyRenderer render
-                    SDL.destroyWindow window
-                    quit) <$> eQuit
+            ePos = SDL.mouseButtonEventPos <$> ePos'
+            onExit = do
+                SDL.destroyRenderer render
+                SDL.destroyWindow window
+                quit
+                exitSuccess
+            draw pos = do
+                SDL.clear render
+                SDL.copy render texture (Just $ SDL.Rectangle primer (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
+                SDL.present render
+
+            eQuit' :: Event (IO ())
+            eQuit' = onExit <$ eQuit
+
         bDestPos <- stepper primer (fmap fromIntegral <$> ePos)
-        --eDestPos <- changes bDestPos
-        reactimate $ (\pos -> do
-            SDL.clear render
-            SDL.copy render texture (Just $ SDL.Rectangle primer (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
-            SDL.present render) <$> bDestPos <@ eQuit
+        bQuit <- stepper (return ()) eQuit'
+
+        eAll <- changes ((>>) <$> (draw <$> bDestPos) <*> bQuit)
+        reactimate' eAll
+
+        --连接两个event后触发与分别触发的区别在哪？
+        {-eDestPos <- changes (draw <$> bDestPos)-}
+        {-reactimate' eDestPos-}
+        {-reactimate eQuit'-}
 
     actuate network
     let
@@ -64,7 +77,3 @@ initSDL = do
     return (window, render, texture)
 
 
-drawPure :: SDL.Renderer -> P2 -> IO ()
-drawPure render pos = do
-    texture <- SDL.loadTexture render "./assets/hello_world.bmp"
-    SDL.copy render texture (Just $ SDL.Rectangle (P (V2 0 0)) (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
