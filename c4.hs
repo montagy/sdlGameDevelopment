@@ -19,9 +19,11 @@ main :: IO ()
 main = do
     (mouseHandler, fireMouse) <- newAddHandler
     (quitHandler, fireQuit) <- newAddHandler
+    (tickHandler, fireTick)  <- newAddHandler
     network <- compile $ do
         eMouse <- fromAddHandler mouseHandler
         eQuit <- fromAddHandler quitHandler
+        eTick <- fromAddHandler tickHandler
         (window,render, texture) <- liftIO initSDL
         let
             ePos' = filterE (\m -> SDL.mouseButtonEventMotion m == SDL.Pressed) eMouse
@@ -42,13 +44,9 @@ main = do
         bDestPos <- stepper primer (fmap fromIntegral <$> ePos)
         bQuit <- stepper (return ()) eQuit'
 
-        eAll <- changes ((>>) <$> (draw <$> bDestPos) <*> bQuit)
-        reactimate' eAll
+        let bAll = (>>) <$> (draw <$> bDestPos) <*> bQuit
+        reactimate $ bAll <@ eTick
 
-        --连接两个event后触发与分别触发的区别在哪？
-        {-eDestPos <- changes (draw <$> bDestPos)-}
-        {-reactimate' eDestPos-}
-        {-reactimate eQuit'-}
 
     actuate network
     let
@@ -64,6 +62,8 @@ main = do
                 processEvents
         go = do
             processEvents
+            SDL.delay 10
+            fireTick ()
             go
     go
 type P2 = Point V2 CInt
