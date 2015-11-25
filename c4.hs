@@ -2,7 +2,7 @@
 module C4 where
 
 import qualified SDL
-import SDL (quit)
+import SDL (quit, ($=))
 import qualified SDL.Image as SDL
 import Reactive.Banana
 import Reactive.Banana.Frameworks
@@ -14,6 +14,9 @@ import System.Exit (exitSuccess)
 
 primer :: Point V2 CInt
 primer = P (V2 0 0)
+
+rectangle :: CInt -> CInt -> CInt -> CInt -> SDL.Rectangle CInt
+rectangle x y w h = SDL.Rectangle (P (V2 x y)) (V2 w h)
 
 main :: IO ()
 main = do
@@ -33,18 +36,25 @@ main = do
                 SDL.destroyWindow window
                 quit
                 exitSuccess
-            draw pos = do
+            draw pos t = do
                 SDL.clear render
                 SDL.copy render texture (Just $ SDL.Rectangle primer (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
+                --SDL.textureAlphaMod texture SDL.$= 100
+                SDL.rendererDrawColor render $= V4 141 238 238 100
+                SDL.copy render texture Nothing (Just $ SDL.Rectangle (P (V2 (100+t) (100+t))) (V2 200 205))
                 SDL.present render
 
             eQuit' :: Event (IO ())
             eQuit' = onExit <$ eQuit
+            eAccTick = (+1) <$ eTick
 
         bDestPos <- stepper primer (fmap fromIntegral <$> ePos)
         bQuit <- stepper (return ()) eQuit'
+        bAccTick <- accumB 0 eAccTick
 
-        let bAll = (>>) <$> (draw <$> bDestPos) <*> bQuit
+        let
+
+            bAll = (>>) <$> (draw <$> bDestPos <*> bAccTick) <*> bQuit
         reactimate $ bAll <@ eTick
 
 
