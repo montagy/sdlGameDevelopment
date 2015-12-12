@@ -11,6 +11,9 @@ import Linear.Affine
 import Foreign.C.Types
 import Control.Monad
 import System.Exit (exitSuccess)
+import Control.Monad.Loops (whileJust_)
+
+type P2 = Point V2 CInt
 
 primer :: Point V2 CInt
 primer = P (V2 0 0)
@@ -18,6 +21,17 @@ primer = P (V2 0 0)
 rectangle :: CInt -> CInt -> CInt -> CInt -> SDL.Rectangle CInt
 rectangle x y w h = SDL.Rectangle (P (V2 x y)) (V2 w h)
 
+fps :: Integer
+fps = 60
+
+dt :: Integer
+dt = 1000 `div` fps
+
+animation :: CInt -> CInt
+animation amoute = if odd n
+                      then 500 - x
+                      else x
+    where (n,x) = amoute `divMod` 500
 main :: IO ()
 main = do
     (mouseHandler, fireMouse) <- newAddHandler
@@ -39,9 +53,8 @@ main = do
             draw pos t = do
                 SDL.clear render
                 SDL.copy render texture (Just $ SDL.Rectangle primer (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
-                --SDL.textureAlphaMod texture SDL.$= 100
                 SDL.rendererDrawColor render $= V4 141 238 238 100
-                SDL.copy render texture Nothing (Just $ SDL.Rectangle (P (V2 (100+t) (100+t))) (V2 200 205))
+                SDL.copy render texture Nothing (Just $ SDL.Rectangle (P (V2 t 0)) (V2 200 205))
                 SDL.present render
 
             eQuit' :: Event (IO ())
@@ -50,33 +63,25 @@ main = do
 
         bDestPos <- stepper primer (fmap fromIntegral <$> ePos)
         bQuit <- stepper (return ()) eQuit'
-        bAccTick <- accumB 0 eAccTick
+        bAccTick <- fmap animation <$> accumB 0 eAccTick
 
         let
-
             bAll = (>>) <$> (draw <$> bDestPos <*> bAccTick) <*> bQuit
         reactimate $ bAll <@ eTick
 
-
     actuate network
     let
-        fireInput Nothing = return ()
-        fireInput (Just (SDL.MouseButtonEvent m)) = fireMouse m
-        fireInput (Just SDL.QuitEvent) = fireQuit ()
+        fireInput (SDL.MouseButtonEvent m) = fireMouse m
+        fireInput SDL.QuitEvent = fireQuit ()
         fireInput _ = return ()
 
         processEvents = do
             minput <- SDL.pollEvent
-            unless (minput == Nothing) $ do
-                fireInput (SDL.eventPayload <$> minput)
-                processEvents
-        go = do
-            processEvents
-            SDL.delay 10
-            fireTick ()
-            go
-    go
-type P2 = Point V2 CInt
+            whileJust_ (SDL.pollEvent) (fireInput . SDL.eventPayload)
+    forever $ do
+        processEvents
+        SDL.delay 16
+        fireTick ()
 
 initSDL :: IO (SDL.Window, SDL.Renderer, SDL.Texture)
 initSDL = do
@@ -85,5 +90,4 @@ initSDL = do
     render <- SDL.createRenderer window (-1) SDL.defaultRenderer
     texture <- SDL.loadTexture render "./assets/hello_world.bmp"
     return (window, render, texture)
-
 
