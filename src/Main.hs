@@ -1,10 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-module C4 where
-
 import qualified SDL
 import SDL (quit, ($=))
-import qualified SDL.Image as SDL
+import SDL.Image ()
 import Reactive.Banana
 import Reactive.Banana.Frameworks
 import Linear
@@ -106,6 +104,5 @@ draw Ctx{..} pos t = do
 
 eMouseClickPosition :: Event SDL.MouseButtonEventData -> Event P2
 eMouseClickPosition  e =
-    fmap fromIntegral <$>
-        SDL.mouseButtonEventPos <$>
-            filterE (\m -> SDL.mouseButtonEventMotion m == SDL.Pressed) e
+  fmap fromIntegral . SDL.mouseButtonEventPos <$>
+    filterE (\m -> SDL.mouseButtonEventMotion m == SDL.Pressed) e
