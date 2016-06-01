@@ -2,12 +2,11 @@
 {-# LANGUAGE RecordWildCards #-}
 import qualified SDL
 import SDL (quit, ($=))
-import SDL.Image ()
 import Reactive.Banana
 import Reactive.Banana.Frameworks
 import Linear
 import Linear.Affine
-import Foreign.C.Types
+import Foreign.C.Types (CInt)
 import Control.Monad
 import System.Exit (exitSuccess)
 import Control.Monad.Loops (whileJust_)
@@ -86,6 +85,7 @@ initSDL = do
         addTexture "button" "assets/button.bmp" render
   return Ctx{..}
 
+--clear and present
 draw :: Ctx -> P2 -> CInt -> IO ()
 draw Ctx{..} pos t = do
   SDL.clear render
