@@ -41,66 +41,65 @@ data Ctx = Ctx { window :: SDL.Window
                }
 main :: IO ()
 main = do
-    (mouseHandler, fireMouse) <- newAddHandler
-    (quitHandler, fireQuit) <- newAddHandler
-    (tickHandler, fireTick)  <- newAddHandler
+  ctx@Ctx{..} <- initSDL
+  (mouseHandler, fireMouse) <- newAddHandler
+  (quitHandler, fireQuit) <- newAddHandler
+  (tickHandler, fireTick)  <- newAddHandler
+  let
+    onExit = do
+      SDL.destroyRenderer render
+      SDL.destroyWindow window
+      quit
+      exitSuccess
+
+    fireInput (SDL.MouseButtonEvent m) = fireMouse m
+    fireInput SDL.QuitEvent = fireQuit onExit
+    fireInput _ = return ()
+
+    processEvents = whileJust_ SDL.pollEvent (fireInput . SDL.eventPayload)
+  network <- compile $ do
+    eMouse <- fromAddHandler mouseHandler
+    bQuit <- fromChanges (return ()) quitHandler
+    eTick <- fromAddHandler tickHandler
     let
-        fireInput (SDL.MouseButtonEvent m) = fireMouse m
-        fireInput SDL.QuitEvent = fireQuit ()
-        fireInput _ = return ()
+      eAccTick = (+1) <$ eTick
 
-        processEvents = whileJust_ SDL.pollEvent (fireInput . SDL.eventPayload)
-    network <- compile $ do
-        eMouse <- fromAddHandler mouseHandler
-        eQuit <- fromAddHandler quitHandler
-        eTick <- fromAddHandler tickHandler
-        ctx@Ctx{..} <- liftIO initSDL
-        let
-            onExit = do
-                SDL.destroyRenderer render
-                SDL.destroyWindow window
-                quit
-                exitSuccess
-            eQuit' = onExit <$ eQuit
-            eAccTick = (+1) <$ eTick
+    bDestPos <- stepper primer (eMouseClickPosition eMouse)
+    bAccTick <- fmap animation <$> accumB 0 eAccTick
+    let
+      bAll = (>>) <$> (draw ctx <$> bDestPos <*> bAccTick) <*> bQuit
+    reactimate $ bAll <@ eTick
 
-        bDestPos <- stepper primer (eMouseClickPosition eMouse)
-        bQuit <- stepper (return ()) eQuit'
-        bAccTick <- fmap animation <$> accumB 0 eAccTick
-        let
-            bAll = (>>) <$> (draw ctx <$> bDestPos <*> bAccTick) <*> bQuit
-        reactimate $ bAll <@ eTick
-
-    actuate network
-    forever $ do
-        fireTick ()
-        processEvents
-        SDL.delay dt
+  actuate network
+  forever $ do
+    fireTick ()
+    processEvents
+    SDL.delay dt
 
 initSDL :: IO Ctx
 initSDL = do
-    SDL.initializeAll
-    window <- SDL.createWindow "Hello" SDL.defaultWindow
-    render <- SDL.createRenderer window (-1) SDL.defaultRenderer
-    textureManager <- (<>) <$>
-        addTexture "walker" "assets/animation.bmp" render <*>
-            addTexture "button" "assets/button.bmp" render
-    return Ctx{..}
+  SDL.initializeAll
+  window <- SDL.createWindow "Hello" SDL.defaultWindow
+  render <- SDL.createRenderer window (-1) SDL.defaultRenderer
+  textureManager <- (<>) <$>
+    addTexture "walker" "assets/animation.bmp" render <*>
+        addTexture "button" "assets/button.bmp" render
+  return Ctx{..}
 
 draw :: Ctx -> P2 -> CInt -> IO ()
 draw Ctx{..} pos t = do
-    SDL.clear render
-    SDL.rendererDrawColor render $= V4 141 238 238 100
-    case Map.lookup "walker" textureManager of
-      Nothing -> return ()
-      Just walker ->
-          SDL.copy render walker (Just $ SDL.Rectangle (P (V2 (64*t) 0)) (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
-    case Map.lookup "button" textureManager of
-      Nothing -> return ()
-      Just button -> do
-          info <- SDL.queryTexture button
-          SDL.copy render button Nothing (Just $ SDL.Rectangle (P (V2 100 100)) (V2 (SDL.textureWidth info) (SDL.textureHeight info)))
-    SDL.present render
+  SDL.clear render
+  SDL.rendererDrawColor render $= V4 141 238 238 100
+  case Map.lookup "walker" textureManager of
+    Nothing -> return ()
+    Just walker ->
+        SDL.copy render walker (Just $ SDL.Rectangle (P (V2 (64*t) 0)) (V2 64 205)) (Just $ SDL.Rectangle pos (V2 64 205))
+  case Map.lookup "button" textureManager of
+    Nothing -> return ()
+    Just button -> do
+        info <- SDL.queryTexture button
+        SDL.copy render button Nothing (Just $ SDL.Rectangle (P (V2 100 100)) (V2 (SDL.textureWidth info) (SDL.textureHeight info)))
+  SDL.present render
 
 eMouseClickPosition :: Event SDL.MouseButtonEventData -> Event P2
 eMouseClickPosition  e =
